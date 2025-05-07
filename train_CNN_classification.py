@@ -6,7 +6,7 @@ import time
 import matplotlib.image as mpimg
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from CNN import CNN_network
+from model import CNN_network
 from functions.load_machine_config import load_machine_config
 
 config = load_machine_config()
