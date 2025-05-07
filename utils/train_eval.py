@@ -25,12 +25,19 @@ def train_verification_model(model, train_loader, learning_rate=1e-4, max_grad_n
 
 def evaluate_verification_model(model, test_loader, target_key):
     model.eval()
+    correct = 0
+    total = 0
     all_outputs, all_labels = [], []
+
     with torch.no_grad():
         for x_batch, y_batch in test_loader:
             out = model(x_batch)
+            predicted = (out > 0.5).float()
             all_outputs.extend(out.cpu().numpy())
             all_labels.extend(y_batch.cpu().numpy())
+            correct += (predicted == y_batch).sum().item()
+            total += y_batch.size(0)
+
     all_outputs = np.array(all_outputs)
     all_labels = np.array(all_labels)
     pred = (all_outputs > 0.5).astype(int)
@@ -55,5 +62,7 @@ def evaluate_verification_model(model, test_loader, target_key):
         'fpr': fpr,
         'tpr': tpr,
         'precision': precision,
-        'recall': recall
+        'recall': recall,
+        'raw_scores': all_outputs,
+        'raw_labels': all_labels 
     }

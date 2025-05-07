@@ -1,0 +1,29 @@
+===== Aggregated (Vote-1) Across All Targets =====
+Avg Accuracy: 77.55%
+Avg AUC:      0.8628
+Avg FAR:      0.3021
+Avg FRR:      0.1504
+
+===== Aggregated (Vote-2) Across All Targets =====
+Avg Accuracy: 83.49%
+Avg AUC:      0.9264
+Avg FAR:      0.1941
+Avg FRR:      0.1385
+
+===== Aggregated (Vote-3) Across All Targets =====
+Avg Accuracy: 86.95%
+Avg AUC:      0.9540
+Avg FAR:      0.1715
+Avg FRR:      0.0947
+
+===== Aggregated (Vote-4) Across All Targets =====
+Avg Accuracy: 87.87%
+Avg AUC:      0.9684
+Avg FAR:      0.1574
+Avg FRR:      0.0912
+
+===== Aggregated (Vote-5) Across All Targets =====
+Avg Accuracy: 88.97%
+Avg AUC:      0.9769
+Avg FAR:      0.1521
+Avg FRR:      0.0771

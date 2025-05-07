@@ -22,11 +22,12 @@ def main():
     print(f"Using device: {device}")
 
     # Experiment settings
+    sessionname = "multiple4"
     tablename = "table1"
     featurename = "touchscreen2"
-    usernames = ["crystal", "james", "jason", "jinwei", "kevin", "rongwei", "ruxin", "will"]
-    fingernames = ["right", "left"]
-    num_instances = 20
+    usernames = ["crystal", "james", "kevin", "will"]
+    fingernames = ["0", "1", "2", "3"]
+    num_instances = 135
     batch_size = 8
     epochs = 500
     normalization_method = 'zscore'
@@ -37,7 +38,7 @@ def main():
     for user in usernames:
         for finger in fingernames:
             key = f"{user}_{finger}"
-            data = load_feature_data(work_directory, tablename, user, finger, featurename, num_instances)
+            data = load_feature_data(work_directory, sessionname, tablename, user, finger, featurename, num_instances)
             if data:
                 all_data[key] = data
                 print(f"{key}: {len(data)} samples")
@@ -75,6 +76,13 @@ def main():
         metrics = evaluate_verification_model(cnn, test_loader, target_key)
         metrics_list.append(metrics)
 
+        # Save raw scores and labels for vote-5 aggregation
+        raw_save_dir = os.path.join(result_dir, target_key)
+        os.makedirs(raw_save_dir, exist_ok=True)
+        np.save(os.path.join(raw_save_dir, "raw_scores.npy"), metrics["raw_scores"])
+        np.save(os.path.join(raw_save_dir, "raw_labels.npy"), metrics["raw_labels"])
+
+
         # Save model
         model_path = os.path.join(result_dir, f"{target_key}_{tablename}_{featurename}_model.pt")
         torch.save(cnn.state_dict(), model_path)
@@ -110,6 +118,18 @@ def main():
         user_summary_df = pd.DataFrame(user_summary)
         user_summary_df.to_csv(os.path.join(result_dir, "user_level_summary.csv"), index=False)
         print("\nUser-Level Summary:\n", user_summary_df)
+
+        # Print overall average across all users
+        avg_overall = {
+            "Avg_Accuracy": user_summary_df["Avg_Accuracy"].mean(),
+            "Avg_AUC": user_summary_df["Avg_AUC"].mean(),
+            "Avg_FAR": user_summary_df["Avg_FAR"].mean(),
+            "Avg_FRR": user_summary_df["Avg_FRR"].mean()
+        }
+        print("\n=== Average Across All Users ===")
+        for key, value in avg_overall.items():
+            print(f"{key}: {value:.4f}")
+
 
         # Plot averages
         plt.figure(figsize=(10, 6))

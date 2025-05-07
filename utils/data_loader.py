@@ -2,10 +2,10 @@ import os
 import numpy as np
 import pandas as pd
 
-def load_feature_data(work_directory, tablename, username, fingername, featurename, num_instances):
+def load_feature_data(work_directory, sessionname, tablename, username, fingername, featurename, num_instances):
     feature_data = []
     for idx in range(1, num_instances + 1):
-        file_path = os.path.join(work_directory, "segments", tablename, username, fingername, featurename, f"touchscreen_featureVector_{idx}.csv")
+        file_path = os.path.join(work_directory, "segments", sessionname, tablename, username, fingername, featurename, f"touchscreen_featureVector_{idx}.csv")
         try:
             data = pd.read_csv(file_path, header=None).values
             data = np.nan_to_num(data, nan=0.0)
