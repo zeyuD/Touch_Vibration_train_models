@@ -13,7 +13,7 @@ This repo is for the model training of Touchscreen Vibration project
 
 ### 2. 
 
-Test:
+The best performance script is now train_CNN_multihands_veri.py
 
 ```bash
 # Comment
