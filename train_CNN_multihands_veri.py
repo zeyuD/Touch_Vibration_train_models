@@ -37,7 +37,7 @@ def load_feature_data(work_directory, tablename, username, fingername, featurena
         )
         
         try:
-            # Load CSV data (41 time steps × 90 features)
+            # Load CSV data (65 time steps × 6 features)
             data = pd.read_csv(file_path, header=None).values
             
             # Replace NaN values with zeros
@@ -128,7 +128,7 @@ def prepare_user_verification_data(target_data, all_user_finger_data, target_key
     genuine_samples = []
     for sample in target_data:
         # Add channel dimension (1 channel)
-        # Original: [41, 90] -> Reshaped: [1, 41, 90]
+        # Original: [65, 6] -> Reshaped: [1, 65, 6]
         genuine_samples.append(np.expand_dims(sample, axis=0))
     
     # Create label array for genuine samples
@@ -177,7 +177,7 @@ class VerificationCNN(torch.nn.Module):
         # Store configuration parameters
         self.batch_size = batch_size
         self.epochs = epochs
-        self.time_steps = time_steps  # 41 in your case
+        self.time_steps = time_steps  # 65 in your case
         self.feature_dim = 6  # Fixed feature dimension from your data
         
         # Define model layers

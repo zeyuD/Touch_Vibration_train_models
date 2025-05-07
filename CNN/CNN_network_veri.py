@@ -1,296 +1,254 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-# import torch.optim as optim 
 import numpy as np
-import seaborn as sn
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, confusion_matrix
 
-class VerificationCNN(nn.Module):
-    def __init__(self, time_steps, batch_size, epochs):
+class VerificationCNN(torch.nn.Module):
+    def __init__(self, time_steps, batch_size, epochs): # time_steps here is the H_in (e.g., 65)
         super(VerificationCNN, self).__init__()
         # Store configuration parameters
         self.batch_size = batch_size
         self.epochs = epochs
-        self.time_steps = time_steps  # 65 in your case
-        self.feature_dim = 6  # Fixed feature dimension from your data
-        
-        # Calculate output sizes after convolutions and pooling
-        time_after_conv1 = time_steps - 2  # kernel_size=3
-        time_after_pool1 = time_after_conv1 // 2  # max_pool size=2
-        time_after_conv2 = time_after_pool1 - 2  # kernel_size=3
-        time_after_pool2 = time_after_conv2 // 2  # max_pool size=2
-        time_after_conv3 = time_after_pool2 - 2  # kernel_size=3 
-        time_after_pool3 = time_after_conv3 // 2  # max_pool size=2
-        
-        self.final_time_dim = max(1, time_after_pool3)  # Ensure at least 1
-        
-        # Define model layers - adapted for time series data
-        # Input shape: [batch_size, 1, time_steps, feature_dim]
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(0, 1))
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=(3, 3), padding=(0, 1))
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=(3, 3), padding=(0, 1))
-        
-        # Calculate the flattened size for the fully connected layer
-        self.flattened_size = 128 * self.final_time_dim * self.feature_dim
-        
-        # Fully connected layers
-        self.fc1 = nn.Linear(self.flattened_size, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 128)
-        self.fc4 = nn.Linear(128, 1)  # Binary output (genuine or impostor)
-        
+        self.time_steps = time_steps # e.g., 65
+
+        # Define model layers
+        # Input: (N, 1, time_steps, features_in), e.g. (N, 1, 65, 6)
+        self.conv1 = torch.nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(0, 1))
+        # H_out = H_in - K_h + 1 => 65 - 3 + 1 = 63
+        # W_out = W_in - K_w + 2*P_w + 1 => 6 - 3 + 2*1 + 1 = 6
+        # Output: (N, 32, 63, 6)
+
+        self.conv2 = torch.nn.Conv2d(32, 64, kernel_size=(3, 3), padding=(0, 1))
+        self.conv3 = torch.nn.Conv2d(64, 128, kernel_size=(3, 3), padding=(0, 1))
+
+        # Placeholder for flattened size and first FC layer
+        self.flattened_size = None
+        self.fc1 = None
+
+        # Subsequent fully connected layers
+        self.fc2 = torch.nn.Linear(512, 128)
+        self.fc3 = torch.nn.Linear(128, 32)
+        self.fc4 = torch.nn.Linear(32, 1)
+
         # Prevent overfitting
-        self.dropout = nn.Dropout(p=0.5)
-        
+        self.dropout = torch.nn.Dropout(p=0.2)
+
         # Sigmoid activation for binary output
-        self.sigmoid = nn.Sigmoid()
-        
-        # Store test data
-        self.test_in = None
-        self.test_out = None
-        
-        # Initialize weights
-        self._initialize_weights()
-    
-    def _initialize_weights(self):
-        """Initialize model weights for better training stability"""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                nn.init.constant_(m.bias, 0)
+        self.sigmoid = torch.nn.Sigmoid()
+
+        # Flag to indicate if the model's first FC layer is initialized
+        self.is_initialized = False
+
+    def _initialize_first_fc_layer(self, x_flat):
+        """
+        Initialize the first fully connected layer based on the actual tensor dimensions after convolutions.
+        """
+        self.flattened_size = x_flat.size(1)
+        print(f"Dynamically determined flattened size: {self.flattened_size}") # e.g. 128 * H_final * W_final
+
+        self.fc1 = torch.nn.Linear(self.flattened_size, 512).to(x_flat.device)
+
+        torch.nn.init.kaiming_normal_(self.fc1.weight, mode='fan_out', nonlinearity='relu')
+        torch.nn.init.constant_(self.fc1.bias, 0)
+
+        self.is_initialized = True
 
     def forward(self, x):
-        # x shape: [batch_size, 1, time_steps, feature_dim]
-        # Ensure input is properly shaped with channel dimension
+        # x expected as (N, 1, time_steps, features), e.g. (N, 1, 65, 6)
         if x.dim() == 3:
-            # If input is [batch_size, time_steps, feature_dim]
             x = x.unsqueeze(1)
-        
-        # Apply convolutions
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, kernel_size=(2, 1))  # Pool over time dimension only
+        elif x.dim() == 2:
+             x = x.unsqueeze(0).unsqueeze(0)
+
+        # Apply convolutions and pooling
+        # Layer 1
+        x = torch.nn.functional.relu(self.conv1(x)) # (N, 32, 63, 6)
+        x = torch.nn.functional.max_pool2d(x, kernel_size=(2, 1), stride=(2,1)) # (N, 32, 31, 6) H_out = floor((63-2)/2 + 1) = 31
         x = self.dropout(x)
-        
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, kernel_size=(2, 1))  # Pool over time dimension only
+
+        # Layer 2
+        x = torch.nn.functional.relu(self.conv2(x)) # (N, 64, 29, 6) H_out = 31-3+1 = 29
+        x = torch.nn.functional.max_pool2d(x, kernel_size=(2, 1), stride=(2,1)) # (N, 64, 14, 6) H_out = floor((29-2)/2 + 1) = 14
         x = self.dropout(x)
-        
-        x = F.relu(self.conv3(x))
-        x = F.max_pool2d(x, kernel_size=(2, 1))  # Pool over time dimension only
+
+        # Layer 3
+        x = torch.nn.functional.relu(self.conv3(x)) # (N, 128, 12, 6) H_out = 14-3+1 = 12
+        x = torch.nn.functional.max_pool2d(x, kernel_size=(2, 1), stride=(2,1)) # (N, 128, 6, 6) H_out = floor((12-2)/2 + 1) = 6
         x = self.dropout(x)
-        
-        # Flatten for fully connected layers
-        x = x.view(-1, self.flattened_size)
-        
-        # Apply fully connected layers
-        x = F.relu(self.fc1(x))
+        # Final feature map per sample: (128, 6, 6)
+
+        # Flatten the tensor
+        x_flat = x.view(x.size(0), -1) # (N, 128*6*6) = (N, 4608)
+
+        if not self.is_initialized or self.fc1 is None:
+            self._initialize_first_fc_layer(x_flat)
+        elif self.flattened_size != x_flat.size(1):
+             print(f"Warning: Flattened size mismatch. Expected {self.flattened_size}, got {x_flat.size(1)}. Re-initializing fc1.")
+             self._initialize_first_fc_layer(x_flat)
+
+        x = torch.nn.functional.relu(self.fc1(x_flat))
         x = self.dropout(x)
-        x = F.relu(self.fc2(x))
+        x = torch.nn.functional.relu(self.fc2(x))
         x = self.dropout(x)
-        x = F.relu(self.fc3(x))
+        x = torch.nn.functional.relu(self.fc3(x))
         x = self.fc4(x)
-        
-        # Apply sigmoid for binary output
         x = self.sigmoid(x)
-        
-        return x.squeeze()  # Remove extra dimension for binary output
+
+        return x.squeeze()
 
     def prepare_data_loaders(self, x_train, x_test, y_train, y_test):
-        """
-        Prepare data loaders for training and testing.
-        
-        Args:
-            x_train (torch.Tensor): Training input data
-            x_test (torch.Tensor): Testing input data
-            y_train (torch.Tensor): Training target data (binary)
-            y_test (torch.Tensor): Testing target data (binary)
-            
-        Returns:
-            tuple: Training and testing data loaders
-        """
         print(f"{x_train.shape[0]} train samples")
         print(f"{x_test.shape[0]} test samples")
 
-        # Create datasets
         train_dataset = torch.utils.data.TensorDataset(x_train, y_train)
         test_dataset = torch.utils.data.TensorDataset(x_test, y_test)
-        
-        # Create data loaders
+
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=self.batch_size, shuffle=True
         )
         test_loader = torch.utils.data.DataLoader(
-            test_dataset, batch_size=self.batch_size, shuffle=True
+            test_dataset, batch_size=self.batch_size, shuffle=False
         )
-        
-        # Store test data for evaluation
-        self.test_in = x_test
-        self.test_out = y_test
-        
+
+        self.test_in = x_test # Optional storage
+        self.test_out = y_test # Optional storage
+
+        if not self.is_initialized and len(train_dataset) > 0:
+            with torch.no_grad():
+                sample_input = x_train[0:1]
+                self(sample_input.to(next(self.parameters()).device)) # Ensure sample is on same device as model
+
         return train_loader, test_loader
-def train_verification_model(model, train_loader, learning_rate=1e-4, max_grad_norm=1.0):
-    """
-    Train the verification CNN model.
-    
-    Args:
-        model (VerificationCNN): The CNN model to train
-        train_loader (DataLoader): DataLoader with training data
-        learning_rate (float): Learning rate for the optimizer
-        max_grad_norm (float): Maximum gradient norm for clipping
-    """
-    # Set model to training mode
+
+def train_verification_model(model, train_loader, learning_rate=1e-4, max_grad_norm=1.0, device='cpu'):
+    model.to(device)
     model.train()
-    
-    # Define loss and optimizer for binary classification
-    criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+
+    criterion = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, eps=1e-7)
-    
-    # Training loop
+
     for epoch in range(model.epochs):
         running_loss = 0
         correct = 0
         total = 0
-        
+
         for batch_idx, (x_batch, y_batch) in enumerate(train_loader):
-            # Check for NaN in input
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+
             if torch.isnan(x_batch).any():
-                print(f"Warning: NaN detected in input batch {batch_idx}, replacing with zeros")
+                print(f"Warning: NaN detected in input batch {batch_idx}, epoch {epoch+1}. Replacing with zeros.")
                 x_batch = torch.nan_to_num(x_batch, nan=0.0)
-            
-            # Zero the gradients
+
             optimizer.zero_grad()
-            
-            # Forward pass
             outputs = model(x_batch)
             
-            # Calculate loss
-            loss = criterion(outputs, y_batch.float())
-            
-            # Check if loss is NaN
-            if torch.isnan(loss).any():
-                print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {batch_idx}")
-                continue
-                
-            # Backward pass
-            loss.backward()
-            
-            # Clip gradients to prevent explosion
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            
-            # Update weights
-            optimizer.step()
-            
-            # Calculate statistics
-            predicted = (outputs > 0.5).float()
-            correct += (predicted == y_batch).sum().item()
-            total += y_batch.size(0)
-            running_loss += loss.item()
-            
-        # Print epoch statistics
-        if total > 0:
-            print(f'Epoch: {epoch+1}  Loss: {running_loss/len(train_loader):.6f}  Accuracy: {correct*100/total:.3f}%')
-        else:
-            print(f'Epoch: {epoch+1}  Loss: {running_loss/len(train_loader) if len(train_loader) > 0 else 0:.6f}  Accuracy: 0.000%')
+            y_batch_target = y_batch.float()
+            if outputs.shape != y_batch_target.shape: # Adjusting for BCELoss compatibility
+                if y_batch_target.ndim == outputs.ndim + 1 and y_batch_target.shape[-1] == 1:
+                    y_batch_target = y_batch_target.squeeze(-1)
+                elif outputs.ndim == y_batch_target.ndim +1 and outputs.shape[-1] == 1:
+                    outputs = outputs.squeeze(-1)
 
-def evaluate_verification_model(model, test_loader):
-    """
-    Evaluate the verification CNN model.
-    
-    Args:
-        model (VerificationCNN): The trained CNN model
-        test_loader (DataLoader): DataLoader with test data
-    """
-    # Set model to evaluation mode
+
+            loss = criterion(outputs, y_batch_target)
+
+            if torch.isnan(loss).any():
+                print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {batch_idx}. Skipping batch.")
+                continue
+
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            optimizer.step()
+
+            predicted = (outputs > 0.5).float()
+            correct += (predicted == y_batch_target).sum().item()
+            total += y_batch_target.size(0)
+            running_loss += loss.item()
+
+        avg_loss = running_loss / len(train_loader) if len(train_loader) > 0 else 0
+        accuracy = correct * 100 / total if total > 0 else 0
+        print(f'Epoch: {epoch+1}/{model.epochs}  Loss: {avg_loss:.6f}  Accuracy: {accuracy:.3f}%')
+
+def evaluate_verification_model(model, test_loader, target_key, device='cpu'):
+    model.to(device)
     model.eval()
-    
+
     correct = 0
     total = 0
     all_outputs = []
     all_labels = []
-    
+
     with torch.no_grad():
-        for batch_idx, (x_batch, y_batch) in enumerate(test_loader):
-            # Forward pass
+        for x_batch, y_batch in test_loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            
             outputs = model(x_batch)
             
-            # Calculate predictions
+            y_batch_eval = y_batch.float()
+            if outputs.shape != y_batch_eval.shape: # Adjust for comparison
+                 if y_batch_eval.ndim == outputs.ndim + 1 and y_batch_eval.shape[-1] == 1:
+                    y_batch_eval = y_batch_eval.squeeze(-1)
+                 elif outputs.ndim == y_batch_eval.ndim +1 and outputs.shape[-1] == 1:
+                    outputs = outputs.squeeze(-1)
+
             predicted = (outputs > 0.5).float()
-            
-            # Store outputs and labels for ROC curve
-            all_outputs.extend(outputs.cpu().numpy())
-            all_labels.extend(y_batch.cpu().numpy())
-            
-            # Calculate accuracy
-            correct += (predicted == y_batch).sum().item()
-            total += y_batch.size(0)
-    
+
+            all_outputs.extend(outputs.cpu().numpy().flatten()) # Ensure 1D arrays for metrics
+            all_labels.extend(y_batch_eval.cpu().numpy().flatten())
+
+            correct += (predicted == y_batch_eval).sum().item()
+            total += y_batch_eval.size(0)
+
     accuracy = 100 * correct / total if total > 0 else 0
-    print(f'Test Accuracy: {accuracy:.2f}%')
-    
-    # Calculate metrics
+    print(f'Target: {target_key} - Test Accuracy: {accuracy:.2f}%')
+
     all_outputs = np.array(all_outputs)
     all_labels = np.array(all_labels)
-    
-    # Import metrics
-    from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, confusion_matrix
-    
-    # ROC curve
-    fpr, tpr, _ = roc_curve(all_labels, all_outputs)
-    roc_auc = auc(fpr, tpr)
-    
-    # Precision-Recall curve
-    precision, recall, _ = precision_recall_curve(all_labels, all_outputs)
-    average_precision = average_precision_score(all_labels, all_outputs)
-    
-    # Confusion matrix
-    y_pred = (all_outputs > 0.5).astype(int)
-    conf_matrix = confusion_matrix(all_labels, y_pred)
-    
-    # Print metrics
+
+    if len(np.unique(all_labels)) < 2:
+        print(f"Warning: Only one class present in y_true for target {target_key}. ROC AUC and Average Precision cannot be robustly calculated.")
+        roc_auc = float('nan')
+        average_precision = float('nan')
+        fpr, tpr = np.array([0, 1]), np.array([0, 1]) 
+        precision, recall = np.array([0,1]), np.array([1,0]) if np.sum(all_labels)>0 else np.array([0,0]) # if only negatives, recall is 0
+        conf_matrix = confusion_matrix(all_labels, (all_outputs > 0.5).astype(int), labels=[0,1]) if total > 0 else np.zeros((2,2), dtype=int)
+    else:
+        fpr, tpr, _ = roc_curve(all_labels, all_outputs)
+        roc_auc = auc(fpr, tpr)
+        precision, recall, _ = precision_recall_curve(all_labels, all_outputs)
+        average_precision = average_precision_score(all_labels, all_outputs)
+        conf_matrix = confusion_matrix(all_labels, (all_outputs > 0.5).astype(int), labels=[0,1])
+
+    if conf_matrix.size == 4:
+        tn, fp, fn, tp = conf_matrix.ravel()
+        far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        frr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
+    else: # Should ideally not happen if labels=[0,1] is used in confusion_matrix
+        far = float('nan')
+        frr = float('nan')
+        # Attempt to reconstruct if possible, though confusion_matrix with labels should prevent this
+        if total > 0:
+            actual_positives = np.sum(all_labels == 1)
+            actual_negatives = np.sum(all_labels == 0)
+            predicted_positives_indices = (all_outputs > 0.5)
+            
+            tp = np.sum((all_labels == 1) & (predicted_positives_indices))
+            fp = np.sum((all_labels == 0) & (predicted_positives_indices))
+            fn = actual_positives - tp
+            tn = actual_negatives - fp
+
+            far = fp / actual_negatives if actual_negatives > 0 else 0.0
+            frr = fn / actual_positives if actual_positives > 0 else 0.0
+
+
     print(f'AUC: {roc_auc:.4f}')
     print(f'Average Precision: {average_precision:.4f}')
-    print('Confusion Matrix:')
-    print(conf_matrix)
-    
-    # Calculate False Accept Rate (FAR) and False Reject Rate (FRR)
-    tn, fp, fn, tp = conf_matrix.ravel()
-    far = fp / (fp + tn)  # False Accept Rate
-    frr = fn / (fn + tp)  # False Reject Rate
-    
     print(f'False Accept Rate (FAR): {far:.4f}')
     print(f'False Reject Rate (FRR): {frr:.4f}')
-    
-    # Plot ROC curve
-    plt.figure(figsize=(10, 8))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
-    plt.legend(loc="lower right")
-    
-    # Plot Precision-Recall curve
-    plt.figure(figsize=(10, 8))
-    plt.plot(recall, precision, color='blue', lw=2, label=f'Precision-Recall curve (AP = {average_precision:.2f})')
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.title('Precision-Recall Curve')
-    plt.legend(loc="lower left")
-    
-    # Plot confusion matrix
-    plt.figure(figsize=(8, 6))
-    labels = ['Impostor', 'Genuine']
-    df_cm = pd.DataFrame(conf_matrix, index=labels, columns=labels)
-    sn.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
-    plt.title('Confusion Matrix')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
+
+    metrics = {
+        'target_key': target_key, 'accuracy': accuracy, 'auc': roc_auc,
+        'avg_precision': average_precision, 'far': far, 'frr': frr,
+        'conf_matrix': conf_matrix, 'fpr': fpr, 'tpr': tpr,
+        'precision': precision, 'recall': recall
+    }
+    return metrics
