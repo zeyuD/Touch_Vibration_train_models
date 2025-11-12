@@ -5,7 +5,7 @@
 This repo is for the model training of Touchscreen Vibration project
 
 ## To Do List
-- CNN implementation
+<!-- - CNN implementation -->
 
 ## Tips
 
