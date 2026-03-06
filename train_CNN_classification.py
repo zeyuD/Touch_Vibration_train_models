@@ -8,6 +8,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from model import CNN_network
 from functions.load_machine_config import load_machine_config
+from variables import usernames
 
 config = load_machine_config()
 
@@ -174,7 +175,6 @@ work_directory = config["data_dir"] + "Touch_Vibration/"
 
 # Configure dataset parameters
 tablenames = ["table1"]
-usernames = ["crystal", "james", "jason", "jinwei", "kevin", "rongwei", "ruxin", "will"]
 fingernames = ["right"]
 featurenames = ["touchscreen2"]
 num_instances = 20

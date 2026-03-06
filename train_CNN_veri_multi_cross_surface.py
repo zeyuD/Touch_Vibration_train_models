@@ -7,6 +7,7 @@ import seaborn as sn
 from utils.aggregate_vote import aggregate_predictions
 
 from functions.load_machine_config import load_machine_config
+from variables import usernames
 
 # Simulate or load real saved prediction scores and labels
 def load_saved_scores_and_labels(result_dir, target_key):
@@ -39,7 +40,6 @@ def main():
     work_dir = os.path.join(config["data_dir"], "Touch_Vibration")
     result_dir = os.path.join(work_dir, "verification_results_zscore")
 
-    usernames = ["crystal", "james", "jason", "jinwei", "kevin", "rongwei", "ruxin", "will"]
     fingernames = ["right", "left"]
 
     all_metrics = []

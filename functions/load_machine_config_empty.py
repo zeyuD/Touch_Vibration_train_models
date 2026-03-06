@@ -13,8 +13,8 @@ def load_machine_config(config_path=None):
         configs = json.load(f)
 
     # Check for SuperPOD hostname pattern first
-    if re.match(r'bcm-dgxa100-.*', hostname):
-        config = configs["slogin-01"].copy()
+    if re.match(r'xxx-xxx-.*', hostname):
+        config = configs["xxx-01"].copy()
         config['code_dir'] = config.get('code_dir')
         config['data_dir'] = config.get('data_dir')
         return config

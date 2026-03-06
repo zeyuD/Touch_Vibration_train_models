@@ -1,0 +1,17 @@
+{
+    "xxxBook": {
+        "machine_type": "MacBook",
+        "code_dir": "/Users/xxx/",
+        "data_dir": "/Users/xxx/",
+        "compdev": "mps"
+    },
+    "xxxWSL": {
+        "machine_type": "Windows Laptop",
+        "win_code_dir": "C:/Users/xxx/",
+        "win_data_dir": "D:/xxx/",
+        "wsl_code_dir": "~/Projects/",
+        "wsl_data_dir": "/mnt/d/xxx/",
+        "compdev": "cuda"
+    }
+  }
+  

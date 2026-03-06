@@ -9,14 +9,11 @@ This repo is for the model training of Touchscreen Vibration project
 
 ## Tips
 
-### 1. 
-
-### 2. 
-
-The best performance script is now train_CNN_multihands_veri.py
+### 1. Remove files cached that are in .gitignore
 
 ```bash
-# Comment
+git rm -r --cached .
+git add .
 
 ```
 

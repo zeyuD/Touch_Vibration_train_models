@@ -1,0 +1,12 @@
+# Dependencies from other projects
+
+# Test files
+
+# Local configuration files
+archived/
+config/machine_config.json
+functions/load_machine_config.py
+variables.py
+
+# Results
+results/

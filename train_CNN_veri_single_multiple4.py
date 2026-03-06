@@ -13,6 +13,7 @@ from utils.metrics import plot_results
 from sklearn.model_selection import train_test_split
 
 from functions.load_machine_config import load_machine_config
+from variables import usernames
 
 
 def main():
@@ -25,7 +26,6 @@ def main():
     sessionname = "multiple4"
     tablename = "table1"
     featurename = "touchscreen2"
-    usernames = ["crystal", "james", "kevin", "will"]
     fingernames = ["0", "1", "2", "3"]
     num_instances = 135
     batch_size = 8
