@@ -1,6 +1,7 @@
 import mlx.core as mx
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import os
 import time
 from sklearn.model_selection import train_test_split
@@ -233,15 +234,19 @@ print(f"Training time used: {train_time-start_time:.2f} seconds")
 
 # 6. Evaluate
 print("Evaluating model...")
-# Simple evaluation logic for MLX
-logits = model(x_test)
-predictions = mx.argmax(logits, axis=1)
-accuracy = mx.mean(predictions == y_test)
+CNN_network_MLX.evaluate_model(model, x_test, y_test, usernames)
+# # Simple evaluation logic for MLX
+# logits = model(x_test)
+# predictions = mx.argmax(logits, axis=1)
+# accuracy = mx.mean(predictions == y_test)
 test_time = time.time()
 print(f"Testing time used: {test_time-train_time:.2f} seconds")
-print(f"Test Accuracy: {accuracy.item() * 100:.2f}%")
+# print(f"Test Accuracy: {accuracy.item() * 100:.2f}%")
 
 # # 7. Save Model
 # # MLX uses save_weights (safetensors/npz) instead of pickling the whole object
 # model.save_weights("touch_cnn_model.safetensors")
 # print("Model weights saved to touch_cnn_model.safetensors")
+
+
+plt.show()

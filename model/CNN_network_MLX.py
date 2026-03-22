@@ -2,6 +2,9 @@ import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
 import numpy as np
+import seaborn as sn
+import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, classification_report
 
 class CNNet(nn.Module):
@@ -124,10 +127,40 @@ def evaluate_model(model, x_test, y_test, usernames):
     
     # MLX is lazy, so model(x_test) only computes when needed
     logits = model(x_test)
-    predictions = mx.argmax(logits, axis=1)
-    
+    y_pred = mx.argmax(logits, axis=1)
+
     # Convert to numpy for sklearn metrics/confusion matrix
-    y_true = np.array(y_test)
-    y_pred = np.array(predictions)
+    true_l = np.array(y_test)
+    pred_l = np.array(y_pred)
+
+    # Create confusion matrix
+    array = confusion_matrix(true_l, pred_l)
+    print('Confusion Matrix:')
+    print(array)
     
-    print(classification_report(y_true, y_pred, target_names=usernames))
+    # Get unique labels
+    unique_labels = sorted(np.unique(true_l))
+    
+    # Generate target names for classification report
+    target_names = [usernames[i] for i in unique_labels]
+    
+    # Display classification report
+    print('Classification Report:')
+    print(classification_report(true_l, pred_l, target_names=target_names))
+
+    # Normalize confusion matrix for better visualization
+    array_norm = np.around(array.astype('float') / np.sum(array, axis=1)[:, None], decimals=2)
+    
+    # Create dataframe for seaborn heatmap
+    df_cm_norm = pd.DataFrame(
+        array_norm, 
+        index=[usernames[i] for i in unique_labels],
+        columns=[usernames[i] for i in unique_labels]
+    )
+    
+    # Plot normalized confusion matrix
+    plt.figure(figsize=(10, 8))
+    sn.heatmap(df_cm_norm, annot=True, cmap='Blues')
+    plt.title('Normalized Confusion Matrix')
+    plt.ylabel('Predicted User')
+    plt.xlabel('True User')
