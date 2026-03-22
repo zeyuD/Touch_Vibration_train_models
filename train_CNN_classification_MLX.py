@@ -1,12 +1,12 @@
-import matplotlib.pyplot as plt
+import mlx.core as mx
 import numpy as np
-import torch
+import pandas as pd
 import os
 import time
-import matplotlib.image as mpimg
-import pandas as pd
 from sklearn.model_selection import train_test_split
-from model import CNN_network
+
+# Import your converted MLX model classes
+from model import CNN_network_MLX 
 from functions.load_machine_config import load_machine_config
 from variables import usernames
 
@@ -138,7 +138,9 @@ def prepare_user_samples(feature_data, user_idx):
     for i in range(len(feature_data)):
         # Add a channel dimension (1 channel)
         # Original: [41, 90] -> Reshaped: [1, 41, 90]
-        sample = np.expand_dims(feature_data[i], axis=0)
+        # MLX works best with the channel dimension at the end.
+        # Change the axis from 0 to -1.
+        sample = np.expand_dims(feature_data[i], axis=-1)
         samples.append(sample)
         labels.append(user_idx)
     
@@ -198,53 +200,48 @@ for username in usernames:
     )
     all_user_data.append([feature_data, username])
 
-# Combine data from all users
+# 1. Load and Process Data
 X, Y = combine_all_user_data(all_user_data, user_indices)
-print(f"Data loaded with shape X: {X.shape}, Y: {Y.shape}")
+X = normalize_all_data(X, method='zscore')
 
-# Apply global normalization to all data points collectively
-X = normalize_all_data(X, method='zscore')  # Use 'minmax' for [0, 1] range
-print(f"Data normalized globally using z-score method")
-
-# Configure device (CPU or GPU)
-device = config["compdev"]
-print(f"Using device: {device}")
-
-# Split data into training and testing sets
+# 2. Split Data
 x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.5, random_state=42)
 
-# Convert to PyTorch tensors
-x_train = torch.from_numpy(x_train).float().to(device)
-x_test = torch.from_numpy(x_test).float().to(device)
-y_train = torch.from_numpy(y_train).long().to(device)
-y_test = torch.from_numpy(y_test).long().to(device)
+# 3. Convert to MLX Arrays (MLX manages memory automatically on Apple Silicon)
+x_train = mx.array(x_train)
+y_train = mx.array(y_train)
+x_test = mx.array(x_test)
+y_test = mx.array(y_test)
 
-# Initialize CNN model
-input_size = 65  # time steps dimension
-cnn = CNN_network.CNNet(input_size, batch_size=8, num_class=len(usernames), epochs=2000)
-cnn = cnn.to(device)
-print('Training device:', next(cnn.parameters()).device)
+# 4. Initialize MLX Model
+# Note: Ensure 'time_steps' matches your data (41 in your CSV logic)
+time_steps = x_train.shape[1] 
+model = CNN_network_MLX.CNNet(time_steps=time_steps, batch_size=8, num_class=len(usernames), epochs=2000)
 
-# Prepare data loaders
-train_loader, test_loader = cnn.prepare_data_loaders(x_train, x_test, y_train, y_test)
+# Initialize weights
+mx.eval(model.parameters())
 
-# Train model
-print("Starting training...")
+# 5. Train Model
+print("Starting training on MLX...")
 start_time = time.time()
-CNN_network.train_model(cnn, train_loader)  # Renamed from 'fit'
+
+# Using the train_model function we defined in the previous MLX step
+CNN_network_MLX.train_model(model, x_train, y_train, learning_rate=1e-4)
+
 train_time = time.time()
 print(f"Training time used: {train_time-start_time:.2f} seconds")
 
-# Evaluate model
+# 6. Evaluate
 print("Evaluating model...")
-with torch.no_grad():
-    CNN_network.evaluate_model(cnn, test_loader, usernames)  # Renamed from 'eva'
+# Simple evaluation logic for MLX
+logits = model(x_test)
+predictions = mx.argmax(logits, axis=1)
+accuracy = mx.mean(predictions == y_test)
 test_time = time.time()
 print(f"Testing time used: {test_time-train_time:.2f} seconds")
+print(f"Test Accuracy: {accuracy.item() * 100:.2f}%")
 
-# Save model
-model_save_path = os.path.join(work_directory, f"{tablename}_{fingername}_{featurename}_cnn.pt")
-# torch.save(cnn, model_save_path)
-# print(f"Model saved to {model_save_path}")
-
-plt.show()
+# # 7. Save Model
+# # MLX uses save_weights (safetensors/npz) instead of pickling the whole object
+# model.save_weights("touch_cnn_model.safetensors")
+# print("Model weights saved to touch_cnn_model.safetensors")
