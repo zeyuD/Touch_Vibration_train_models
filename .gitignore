@@ -10,3 +10,8 @@ variables.py
 
 # Results
 results/
+
+# Python cache
+__pycache__/
+functions/__pycache__/
+model/__pycache__/
